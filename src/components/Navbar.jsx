@@ -1,6 +1,5 @@
-// Navbar.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
     Folder,
     LayoutGrid,
@@ -27,38 +26,34 @@ import { useSave } from "@/contexts/SaveContext";
 import { toast } from "react-toastify";
 import PreviewModal from "@/pages/PreviewModal";
 import { useUndo } from "@/contexts/UndoContext";
+import {
+    getProjects,
+    getProject,
+    setCurrentProject as setBackendCurrentProject,
+    getCurrentProject,
+} from "@/api/projectApi";
+import { getPages } from "@/api/pageApi";
 
-export default function Navbar({ handleSave }) {
+export default function Navbar() {
     const [showPosts, setShowPosts] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const pagesRef = useRef();
-    const postsRef = useRef();
-    const projectDropdownRef = useRef();
     const [showProjectDropdown, setShowProjectDropdown] = useState(false);
     const [showProjectManager, setShowProjectManager] = useState(false);
     const [showPageManager, setShowPageManager] = useState(false);
     const [showPagesDropdown, setShowPagesDropdown] = useState(false);
 
-    const pages = JSON.parse(localStorage.getItem("pages")) || [];
-    const currentPageId = localStorage.getItem("currentPageId");
-    const currentPage = pages.find((p) => p.id === currentPageId);
-    const posts = JSON.parse(localStorage.getItem("posts")) || [];
+    const [projects, setProjects] = useState([]);
+    const [currentProject, setCurrentProject] = useState(null);
+    const [pages, setPages] = useState([]);
+    const [currentPageId, setCurrentPageId] = useState(null);
+
+    const pagesRef = useRef();
+    const postsRef = useRef();
+    const projectDropdownRef = useRef();
     const navigate = useNavigate();
-    const { recordState, handleUndo, handleRedo, canUndo, canRedo } = useUndo();
-
-    const [projects, setProjects] = useState(() => {
-        const saved = localStorage.getItem("projects");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [currentProject, setCurrentProject] = useState(() => {
-        return JSON.parse(localStorage.getItem("currentProject")) || null;
-    });
-
-    const projectPages = pages.filter((page) => page.projectId === currentProject?.id);
+    const { handleUndo, handleRedo, canUndo, canRedo } = useUndo();
     const { saveFn } = useSave();
 
-    // preview
     const [showPreviewModal, setShowPreviewModal] = useState(false);
 
     const handleClick = () => {
@@ -67,24 +62,65 @@ export default function Navbar({ handleSave }) {
         } else toast.success("Không có gì để lưu hoặc chưa vào trang chỉnh sửa.");
     };
 
+    // Fetch projects và project hiện tại khi component mount
     useEffect(() => {
-        const stored = localStorage.getItem("currentProject");
-        if (stored) {
+        const fetchInitialData = async () => {
             try {
-                setCurrentProject(JSON.parse(stored));
+                const projectList = await getProjects();
+                setProjects(projectList);
+
+                const current = await getCurrentProject();
+                if (current) {
+                    setCurrentProject(current);
+                }
             } catch (err) {
-                console.error("Invalid currentProject in localStorage");
+                console.error("Lỗi khi tải projects:", err);
             }
-        }
+        };
+
+        fetchInitialData();
     }, []);
 
+    // Fetch pages khi currentProject thay đổi
     useEffect(() => {
-        const handleCloseProject = () => {
-            setShowProjectManager(false);
+        const fetchPagesForCurrentProject = async () => {
+            if (currentProject) {
+                try {
+                    const allPages = await getPages();
+                    const filteredPages = allPages.filter((p) => p.project === currentProject.id);
+                    setPages(filteredPages);
 
-            setProjects(JSON.parse(localStorage.getItem("projects")) || []);
-            setCurrentProject(JSON.parse(localStorage.getItem("currentProject")) || null);
+                    if (filteredPages.length > 0) {
+                        setCurrentPageId(filteredPages[0].id);
+                    } else {
+                        setCurrentPageId(null);
+                    }
+                } catch (err) {
+                    console.error("Lỗi khi tải pages:", err);
+                    setPages([]);
+                }
+            } else {
+                setPages([]);
+                setCurrentPageId(null);
+            }
         };
+        fetchPagesForCurrentProject();
+    }, [currentProject]);
+
+    const handleProjectsUpdate = (updatedProjects, newCurrentProject = null) => {
+        setProjects(updatedProjects);
+        if (newCurrentProject) {
+            setCurrentProject(newCurrentProject);
+            localStorage.setItem("currentProject", JSON.stringify(newCurrentProject));
+        }
+    };
+
+    // const projectPages = pages.filter((page) => page.projectId === currentProject?.id); // Dòng này không còn cần thiết nếu `pages` đã được lọc đúng
+    const projectPages = pages; // Sử dụng `pages` đã được lọc bởi useEffect
+    const currentPage = pages.find((p) => p.id === currentPageId);
+
+    useEffect(() => {
+        const handleCloseProject = () => setShowProjectManager(false);
         const handleClosePage = () => setShowPageManager(false);
 
         window.addEventListener("close-project-manager", handleCloseProject);
@@ -95,18 +131,10 @@ export default function Navbar({ handleSave }) {
         };
     }, []);
 
-    const handleProjectsUpdate = (updatedProjects, newCurrentProject = null) => {
-        setProjects(updatedProjects);
-        if (newCurrentProject) {
-            setCurrentProject(newCurrentProject);
-            localStorage.setItem("currentProject", JSON.stringify(newCurrentProject));
-        }
-    };
-
     return (
         <div className="border-b shadow-sm bg-white">
             <div className="flex justify-between items-center px-4 py-3">
-                <div className=" flex items-center gap-4">
+                <div className="flex items-center gap-4">
                     <Link to="/" className="flex items-center text-xl font-bold">
                         <span className="mr-2">
                             <Layers size={24} />
@@ -115,7 +143,6 @@ export default function Navbar({ handleSave }) {
                     </Link>
 
                     <div className="hidden sm:flex items-center gap-4">
-                        {/* projectDropdownRef */}
                         <div className="relative" ref={projectDropdownRef}>
                             <button
                                 onClick={() => setShowProjectDropdown((prev) => !prev)}
@@ -129,15 +156,16 @@ export default function Navbar({ handleSave }) {
                             </button>
 
                             {showProjectDropdown && (
-                                <div className="absolute z-50 left-0 mt-1 w-[200px] bg-white border rounded shadow-md  animate-in fade-in slide-in-from-top-1 duration-100">
+                                <div className="absolute z-50 left-0 mt-1 w-[200px] bg-white border rounded shadow-md animate-in fade-in slide-in-from-top-1 duration-100">
                                     {projects.map((project) => (
                                         <button
                                             key={project.id}
-                                            onClick={() => {
-                                                localStorage.setItem("currentProject", JSON.stringify(project));
+                                            onClick={async () => {
+                                                await setBackendCurrentProject(project.id);
                                                 setCurrentProject(project);
+                                                localStorage.setItem("currentProject", JSON.stringify(project));
                                                 setShowProjectDropdown(false);
-                                                navigate(`/post/${project.id}`);
+                                                navigate(`/project/:${project.id}`);
                                             }}
                                             className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2"
                                         >
@@ -166,7 +194,6 @@ export default function Navbar({ handleSave }) {
                                 </div>
                             )}
 
-                            {/* Truyền handleProjectsUpdate và setCurrentProject xuống ProjectManager */}
                             {showProjectManager && (
                                 <ProjectManager
                                     onClose={() => setShowProjectManager(false)}
@@ -175,7 +202,6 @@ export default function Navbar({ handleSave }) {
                             )}
                         </div>
 
-                        {/* Home Dropdown from Pages */}
                         <div className="relative" ref={pagesRef}>
                             <button
                                 onClick={() => setShowPagesDropdown(!showPagesDropdown)}
@@ -190,29 +216,55 @@ export default function Navbar({ handleSave }) {
 
                             {showPagesDropdown && (
                                 <div className="absolute left-0 mt-1 w-56 bg-white border rounded shadow-md z-20">
-                                    {projectPages.map((page) => (
-                                        <button
-                                            key={page.id}
-                                            onClick={() => {
-                                                localStorage.setItem("currentPageId", page.id);
-                                                navigate(`/edit-page/${page.id}`);
-                                            }}
-                                            className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2"
-                                        >
-                                            {page.id === currentPageId ? <Home size={16} /> : <File size={16} />}
-                                            {page.name}
-                                        </button>
-                                    ))}
-
+                                    {projectPages.length > 0 ? (
+                                        projectPages.map((page) => (
+                                            <button
+                                                key={page.id}
+                                                onClick={() => {
+                                                    setCurrentPageId(page.id);
+                                                    setShowPagesDropdown(false);
+                                                    navigate(`/edit-page/${page.id}`);
+                                                }}
+                                                className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2"
+                                            >
+                                                {page.title?.toLowerCase() === "home" ? (
+                                                    <Home size={16} />
+                                                ) : (
+                                                    <File size={16} />
+                                                )}
+                                                {page.title}
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="px-4 py-2 text-gray-500 text-center">
+                                            No pages. Add a new page!
+                                        </div>
+                                    )}
                                     <div className="border-t my-1"></div>
                                     <button
-                                        onClick={() => setShowPageManager(true)}
+                                        onClick={() => {
+                                            if (!currentProject) {
+                                                toast.warning("Vui lòng chọn một Project trước khi tạo Page.");
+                                                setShowPagesDropdown(false); // Đóng dropdown
+                                                return;
+                                            }
+                                            setShowPageManager(true);
+                                            setShowPagesDropdown(false); // Đóng dropdown
+                                        }}
                                         className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2"
                                     >
                                         <Plus size={16} /> Add New Page
                                     </button>
                                     <button
-                                        onClick={() => setShowPageManager(true)}
+                                        onClick={() => {
+                                            if (!currentProject) {
+                                                toast.warning("Vui lòng chọn một Project trước khi quản lý Pages.");
+                                                setShowPagesDropdown(false); // Đóng dropdown
+                                                return;
+                                            }
+                                            setShowPageManager(true);
+                                            setShowPagesDropdown(false); // Đóng dropdown
+                                        }}
                                         className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2"
                                     >
                                         <Settings size={16} /> Manage Pages
@@ -230,6 +282,7 @@ export default function Navbar({ handleSave }) {
                 </div>
 
                 <div className="hidden sm:flex items-center gap-2">
+                    {/* Các nút Project, Pages (button) */}
                     <button
                         onClick={() => setShowProjectManager(true)}
                         className="border px-3 py-1 rounded flex items-center gap-2"
@@ -240,7 +293,6 @@ export default function Navbar({ handleSave }) {
                     {showProjectManager && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
                             <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl p-6 relative">
-                                {/* Truyền handleProjectsUpdate và setCurrentProject xuống ProjectManager */}
                                 <ProjectManager
                                     onClose={() => setShowProjectManager(false)}
                                     onProjectsUpdate={handleProjectsUpdate}
@@ -251,15 +303,21 @@ export default function Navbar({ handleSave }) {
 
                     <div className="relative" ref={pagesRef}>
                         <button
-                            onClick={() => setShowPageManager(true)}
+                            onClick={() => {
+                                if (!currentProject) {
+                                    toast.warning("Vui lòng chọn một Project trước khi tạo Page.");
+                                    return;
+                                }
+                                setShowPageManager(true);
+                            }}
                             className="border px-3 py-1 rounded flex items-center gap-2"
                         >
                             <LayoutGrid size={16} /> Pages
                         </button>
-
-                        {showPageManager && <PageManager />}
+                        {showPageManager && currentProject && <PageManager currentProject={currentProject} />}{" "}
+                        {/* TRUYỀN currentProject XUỐNG */}
                     </div>
-
+                    {/* ... các nút khác */}
                     <div className="relative" ref={postsRef}>
                         <button
                             onClick={() => setShowPosts(!showPosts)}
@@ -274,24 +332,26 @@ export default function Navbar({ handleSave }) {
                                     if (e.target === e.currentTarget) setShowPosts(false);
                                 }}
                             >
-                                <PostManager onClose={() => setShowPosts(false)} />
+                                <PostManager
+                                    onClose={() => setShowPosts(false)}
+                                    currentProjectId={currentProject?.id}
+                                />
                             </div>
                         )}
                     </div>
 
-                    {/* Undo/Redo buttons */}
-                    <div className=" flex gap-2">
+                    <div className="flex gap-2">
                         <button
                             onClick={handleUndo}
                             disabled={!canUndo}
-                            className=" hover:bg-gray-300 disabled:opacity-50 px-3 py-1 rounded shadow"
+                            className="hover:bg-gray-300 disabled:opacity-50 px-3 py-1 rounded shadow"
                         >
                             <Undo />
                         </button>
                         <button
                             onClick={handleRedo}
                             disabled={!canRedo}
-                            className=" hover:bg-gray-300 disabled:opacity-50 px-3 py-1 rounded shadow"
+                            className="hover:bg-gray-300 disabled:opacity-50 px-3 py-1 rounded shadow"
                         >
                             <Redo />
                         </button>
@@ -313,7 +373,6 @@ export default function Navbar({ handleSave }) {
                 </div>
             </div>
 
-            {/* Preview Modal */}
             {showPreviewModal && <PreviewModal open={showPreviewModal} onClose={() => setShowPreviewModal(false)} />}
         </div>
     );

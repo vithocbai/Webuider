@@ -1,111 +1,102 @@
-// ProjectManager.jsx
 import React, { useState, useEffect } from "react";
-import { Plus, Upload, MoreHorizontal, X } from "lucide-react";
-import { Pencil, Copy, Trash2, Download, ArrowUpRight } from "lucide-react";
+import { Plus, Upload, MoreHorizontal, X, Pencil, Copy, Trash2, Download, ArrowUpRight } from "lucide-react";
 import ConfirmModal from "./ConfirmModal";
+import { getProjects, createProject, deleteProject } from "@/api/projectApi";
+import { useProject } from "@/contexts/ProjectContext";
 
-// Thêm onProjectsUpdate làm prop
 export default function ProjectManager({ onClose, onProjectsUpdate }) {
     const [projects, setProjects] = useState([]);
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
-    const [showForm, setShowForm] = useState(true);
+    const [showForm, setShowForm] = useState(false);
     const [activeMenuId, setActiveMenuId] = useState(null);
-
     const [showConfirm, setShowConfirm] = useState(false);
     const [deleteId, setDeleteId] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    // Lấy dữ liệu projects ban đầu từ localStorage
+    const { currentProject, updateProject } = useProject();
+    const currentProjectId = currentProject?.id;
+
     useEffect(() => {
-        const saved = JSON.parse(localStorage.getItem("projects")) || [];
-        setProjects(saved);
+        fetchProjects();
     }, []);
 
-    // Cập nhật localStorage và state `projects`, đồng thời gọi callback để thông báo cho component cha
-    const saveProjects = (data) => {
-        localStorage.setItem("projects", JSON.stringify(data));
-        setProjects(data);
-        if (onProjectsUpdate) {
-            onProjectsUpdate(data); // Gọi callback để Navbar cập nhật state của nó
+    const fetchProjects = async () => {
+        setLoading(true);
+        try {
+            const data = await getProjects();
+            setProjects(data);
+        } catch (err) {
+            console.error("Không thể tải projects", err);
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleCreate = () => {
+    const handleCreate = async () => {
         if (!name.trim()) return;
 
-        const newProject = {
-            id: Date.now().toString(),
-            name,
-            description,
-            updatedAt: new Date().toISOString(),
-            pages: Math.floor(Math.random() * 5) + 1,
-        };
-
-        const updated = [...projects, newProject];
-        saveProjects(updated); // Sẽ tự động gọi onProjectsUpdate
-
-        // Reset form
-        setName("");
-        setDescription("");
+        try {
+            const newProject = await createProject({ name, description });
+            const updated = [...projects, newProject];
+            setProjects(updated);
+            if (onProjectsUpdate) onProjectsUpdate(updated);
+            setName("");
+            setDescription("");
+            setShowForm(false);
+        } catch (err) {
+            console.error("Tạo project thất bại", err);
+            alert("Không thể tạo project. Vui lòng thử lại.");
+        }
     };
 
-    const handleSetCurrent = (id) => {
+    const handleDuplicate = async (project) => {
+        try {
+            const newProject = await createProject({
+                name: `${project.name} Copy`,
+                description: project.description,
+            });
+            const updated = [...projects, newProject];
+            setProjects(updated);
+            if (onProjectsUpdate) onProjectsUpdate(updated);
+            setActiveMenuId(null);
+        } catch (err) {
+            console.error("Duplicate thất bại", err);
+            alert("Không thể duplicate.");
+        }
+    };
+
+    const handleDelete = (id) => {
+        setDeleteId(id);
+        setShowConfirm(true);
+        setActiveMenuId(null);
+    };
+
+    const confirmDelete = async () => {
+        try {
+            await deleteProject(deleteId);
+            const updated = projects.filter((p) => p.id !== deleteId);
+            setProjects(updated);
+
+            if (onProjectsUpdate) {
+                onProjectsUpdate(updated, deleteId === currentProjectId ? null : currentProject);
+            }
+
+            setDeleteId(null);
+            setShowConfirm(false);
+        } catch (err) {
+            console.error("Xóa thất bại", err);
+            alert("Không thể xóa project.");
+        }
+    };
+
+    const handleSetCurrent = async (id) => {
         const selected = projects.find((p) => p.id === id);
         if (!selected) return;
-        localStorage.setItem("currentProject", JSON.stringify(selected));
-        if (onProjectsUpdate) {
-            // Cập nhật cả danh sách projects (không thay đổi) và currentProject
-            onProjectsUpdate(projects, selected);
-        }
-        // Đóng ProjectManager sau khi chọn project mới
+
+        await updateProject(selected);
+        if (onProjectsUpdate) onProjectsUpdate(projects, selected);
         onClose();
-    };
-
-    const handleImport = (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const imported = JSON.parse(e.target.result);
-                if (Array.isArray(imported)) {
-                    saveProjects([...projects, ...imported]); // Sẽ tự động gọi onProjectsUpdate
-                    alert("Import thành công!");
-                } else {
-                    alert("File không hợp lệ.");
-                }
-            } catch (err) {
-                alert("Lỗi khi đọc file JSON.");
-            }
-        };
-        reader.readAsText(file);
-    };
-
-    const handleClose = () => {
-        // Có thể không cần CustomEvent nếu bạn dùng prop `onClose` của ProjectManager
-        // const event = new CustomEvent("close-project-manager");
-        // window.dispatchEvent(event);
-        if (onClose) {
-            onClose();
-        }
-    };
-
-    const handleEdit = (project) => {
-        setName(project.name);
-        setDescription(project.description);
-        setShowForm(true);
-        setActiveMenuId(null); // Đóng menu sau khi click
-    };
-
-    const handleDuplicate = (project) => {
-        const newProject = {
-            ...project,
-            id: Date.now().toString(),
-            name: `${project.name} Copy`,
-            updatedAt: new Date().toISOString(),
-        };
-        saveProjects([...projects, newProject]); // Sẽ tự động gọi onProjectsUpdate
-        setActiveMenuId(null); // Đóng menu sau khi click
     };
 
     const handleExport = (project) => {
@@ -118,30 +109,38 @@ export default function ProjectManager({ onClose, onProjectsUpdate }) {
         a.download = `${project.name}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        setActiveMenuId(null); // Đóng menu sau khi click
+        setActiveMenuId(null);
     };
 
-    const handleDelete = (id) => {
-        setDeleteId(id);
-        setShowConfirm(true);
-        setActiveMenuId(null); // Đóng menu sau khi click
-    };
-
-    const confirmDelete = () => {
-        const updated = projects.filter((p) => p.id !== deleteId);
-        saveProjects(updated); // Sẽ tự động gọi onProjectsUpdate
-        if (deleteId === currentProjectId) {
-            localStorage.removeItem("currentProject"); // Xóa currentProject nếu project hiện tại bị xóa
-            if (onProjectsUpdate) {
-                onProjectsUpdate(updated, null); // Cập nhật currentProject là null nếu bị xóa
+    const handleImport = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (Array.isArray(imported)) {
+                    for (const item of imported) {
+                        await createProject({ name: item.name, description: item.description });
+                    }
+                    await fetchProjects();
+                    alert("Import thành công!");
+                } else {
+                    alert("File không hợp lệ.");
+                }
+            } catch (err) {
+                alert("Lỗi khi đọc file JSON.");
             }
-        }
-        setDeleteId(null);
-        setShowConfirm(false);
+        };
+        reader.readAsText(file);
     };
 
-    const currentProject = JSON.parse(localStorage.getItem("currentProject"));
-    const currentProjectId = currentProject?.id;
+    const handleEdit = (project) => {
+        setName(project.name);
+        setDescription(project.description);
+        setShowForm(true);
+        setActiveMenuId(null);
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -149,7 +148,7 @@ export default function ProjectManager({ onClose, onProjectsUpdate }) {
                 <div className="flex justify-between items-center mb-6">
                     <div className="text-xl font-semibold">Project Manager</div>
                     <button
-                        onClick={handleClose}
+                        onClick={onClose}
                         className="flex items-center gap-2 px-4 py-2 rounded text-sm text-gray-500 hover:text-black"
                     >
                         <X size={16} />
@@ -158,7 +157,11 @@ export default function ProjectManager({ onClose, onProjectsUpdate }) {
 
                 <div className="flex justify-between items-center mb-4">
                     <button
-                        onClick={() => setShowForm(!showForm)}
+                        onClick={() => {
+                            setShowForm((prev) => !prev);
+                            setName("");
+                            setDescription("");
+                        }}
                         className="px-4 py-2 border rounded bg-black text-white hover:bg-gray-800 flex items-center gap-2"
                     >
                         <Plus size={16} /> New Project
@@ -202,85 +205,90 @@ export default function ProjectManager({ onClose, onProjectsUpdate }) {
                     </div>
                 )}
 
-                <div className="grid md:grid-cols-2 gap-4">
-                    {projects.map((project) => (
-                        <div key={project.id} className="border rounded shadow-sm">
-                            <div className="bg-gray-100 text-center p-4 text-lg font-medium text-gray-600">
-                                {project.name}
-                            </div>
-                            <div className="p-4 text-sm space-y-2">
-                                <div className="font-medium">{project.name}</div>
-                                <div className="text-gray-500">{project.description || "No description"}</div>
-                                <div className="text-xs text-gray-400">
-                                    {project.pages || 1} pages • Updated{" "}
-                                    {new Date(project.updatedAt).toLocaleDateString()}
+                {loading ? (
+                    <div className="text-center py-10 text-gray-500">Loading projects...</div>
+                ) : (
+                    <div className="grid md:grid-cols-2 gap-4">
+                        {projects.map((project) => (
+                            <div key={project.id} className="border rounded shadow-sm">
+                                <div className="bg-gray-100 text-center p-4 text-lg font-medium text-gray-600">
+                                    {project.name}
                                 </div>
-                                <div className="flex justify-between items-center mt-2">
-                                    {project.id === currentProjectId ? (
-                                        <span className="text-xs px-3 py-1 rounded-full bg-black text-white">
-                                            Current
-                                        </span>
-                                    ) : (
-                                        <button
-                                            onClick={() => handleSetCurrent(project.id)}
-                                            className="text-xs px-3 py-1 border rounded hover:bg-gray-100"
-                                        >
-                                            Current
-                                        </button>
-                                    )}
-                                    <div className="text-gray-500 hover:text-black">
-                                        <div className="relative">
+                                <div className="p-4 text-sm space-y-2">
+                                    <div className="font-medium">{project.name}</div>
+                                    <div className="text-gray-500">{project.description || "No description"}</div>
+                                    <div className="text-xs text-gray-400">
+                                        {project.pages?.length || 0} pages • Created{" "}
+                                        {new Date(project.created_at).toLocaleDateString()}
+                                    </div>
+                                    <div className="flex justify-between items-center mt-2">
+                                        {project.id === currentProjectId ? (
+                                            <span className="text-xs px-3 py-1 rounded-full bg-black text-white">
+                                                Current
+                                            </span>
+                                        ) : (
                                             <button
-                                                onClick={() =>
-                                                    setActiveMenuId(activeMenuId === project.id ? null : project.id)
-                                                }
-                                                className="text-gray-500 hover:text-black"
+                                                onClick={() => handleSetCurrent(project.id)}
+                                                className="text-xs px-3 py-1 border rounded hover:bg-gray-100"
                                             >
-                                                <MoreHorizontal size={16} />
+                                                Current
                                             </button>
+                                        )}
+                                        <div className="text-gray-500 hover:text-black">
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() =>
+                                                        setActiveMenuId(activeMenuId === project.id ? null : project.id)
+                                                    }
+                                                    className="text-gray-500 hover:text-black"
+                                                >
+                                                    <MoreHorizontal size={16} />
+                                                </button>
 
-                                            {activeMenuId === project.id && (
-                                                <div className="absolute right-[22px] top-0 bg-white border shadow-md rounded w-40 text-sm z-10">
-                                                    <button
-                                                        onClick={() => handleSetCurrent(project.id)}
-                                                        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
-                                                    >
-                                                        <ArrowUpRight size={16} /> Open
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleEdit(project)}
-                                                        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
-                                                    >
-                                                        <Pencil size={16} /> Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDuplicate(project)}
-                                                        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
-                                                    >
-                                                        <Copy size={16} /> Duplicate
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleExport(project)}
-                                                        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
-                                                    >
-                                                        <Download size={16} /> Export
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(project.id)}
-                                                        className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-gray-100"
-                                                    >
-                                                        <Trash2 size={16} /> Delete
-                                                    </button>
-                                                </div>
-                                            )}
+                                                {activeMenuId === project.id && (
+                                                    <div className="absolute right-[22px] top-0 bg-white border shadow-md rounded w-40 text-sm z-10">
+                                                        <button
+                                                            onClick={() => handleSetCurrent(project.id)}
+                                                            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
+                                                        >
+                                                            <ArrowUpRight size={16} /> Open
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleEdit(project)}
+                                                            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
+                                                        >
+                                                            <Pencil size={16} /> Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDuplicate(project)}
+                                                            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
+                                                        >
+                                                            <Copy size={16} /> Duplicate
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleExport(project)}
+                                                            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-100"
+                                                        >
+                                                            <Download size={16} /> Export
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(project.id)}
+                                                            className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-gray-100"
+                                                        >
+                                                            <Trash2 size={16} /> Delete
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
+
             <ConfirmModal
                 isOpen={showConfirm}
                 onCancel={() => {

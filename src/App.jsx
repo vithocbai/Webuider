@@ -11,6 +11,7 @@ import EditPost from "./pages/EditPost";
 import CustomPage from "./pages/CustomPage";
 import EditablePage from "@/pages/EditablePage";
 import PreviewModal from "@/pages/PreviewModal";
+import ProjectManager from "@/components/ProjectManager";
 
 export default function App() {
     const pages = JSON.parse(localStorage.getItem("pages")) || [];
@@ -32,7 +33,7 @@ export default function App() {
                 <Route path="/post/:id" element={<PostDetail />} />
                 <Route path="/edit-post/:id" element={<EditPost />} />
                 <Route path="/preview" element={<PreviewModal />} />
-                
+                {/* <Route path="/project/:id" element={<Home />} /> */}
                 {/* Các page được tạo từ PageManager */}
                 {pages.map((page) => (
                     <Route key={page.id} path={page.slug} element={<CustomPage page={page} />} />

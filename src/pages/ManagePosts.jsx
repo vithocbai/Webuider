@@ -7,6 +7,7 @@ export default function ManagePosts() {
 
     useEffect(() => {
         const currentProject = JSON.parse(localStorage.getItem("currentProject"));
+        console.log(currentProject)
         if (!currentProject) {
             alert("Chưa chọn Project.");
             return;
