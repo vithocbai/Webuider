@@ -61,14 +61,7 @@ const ContainerBlock = ({ block, blocks, onSelect, onChange, isPreview }) => {
         ...baseStyle,
         ...layoutStyle,
       }}
-      // onClick={
-      //     onSelect
-      //         ? (e) => {
-      //               e.stopPropagation(); // ⚠️ CHẶN click bubble lên container
-      //               onSelect(block.id);
-      //           }
-      //         : undefined
-      // }
+      
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           e.stopPropagation();

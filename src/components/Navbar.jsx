@@ -165,7 +165,7 @@ export default function Navbar() {
                                                 setCurrentProject(project);
                                                 localStorage.setItem("currentProject", JSON.stringify(project));
                                                 setShowProjectDropdown(false);
-                                                navigate(`/project/:${project.id}`);
+                                                navigate(`/projects/${project.id}`);
                                             }}
                                             className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2"
                                         >

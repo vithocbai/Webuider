@@ -9,7 +9,7 @@ export async function getProjects() {
 export async function createProject(data) {
     const res = await axios.post("projects/", {
         ...data,
-        layout: [], 
+        layout: [],
     });
     return res.data;
 }
@@ -35,10 +35,10 @@ export async function deleteProject(id) {
 // Lấy project hiện tại
 export const getCurrentProject = async () => {
     const res = await axios.get("/current-project/");
-    return res.data.current_project;
+    return res.data.project;
 };
 
-
+getCurrentProject();
 // set lại project
 export const setCurrentProject = async (projectId) => {
     const res = await axios.post("/current-project/", {

@@ -25,3 +25,9 @@ export const deletePage = async (id) => {
     const res = await axios.delete(`pages/${id}/`);
     return res.data;
 };
+
+// Lấy pages theo projectId
+export const getPagesByProject = async (projectId) => {
+    const res = await axios.get(`projects/${projectId}/pages/`);
+    return res.data;
+};

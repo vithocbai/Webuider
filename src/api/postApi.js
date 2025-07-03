@@ -1,8 +1,12 @@
 // // src/api/postApi.js
 import axios from "./axios";
 
-export const getPostsByProject = async () => {
-    const res = await axios.get("posts/");
+// export const getPostsByProject = async () => {
+//     const res = await axios.get("posts/");
+//     return res.data;
+// };
+export const getPostsByProject = async (projectId) => {
+    const res = await axios.get(`posts/?project=${projectId}`);
     return res.data;
 };
 
